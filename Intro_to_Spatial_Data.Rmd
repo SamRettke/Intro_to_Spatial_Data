@@ -1,0 +1,246 @@
+---
+title: "Intro_to_Spatial_Data"
+author: "Sam Rettke"
+date: "12/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+**Introduction to Spatial Data**
+  Using MQ1 focal data 2010-2012 and feeding tree data through 2012
+
+Outline:
+sp vs. sf packages
+Getting data into R
+	Data frames
+	Shapefiles
+Coordinate reference systems and projections
+	Assigning/naming the CRS
+	Changing the CRS
+Preliminary visualizations using the plot and ggplot functions
+  plotting points with and without Shapefiles for context
+  
+```{r}
+easypackages::libraries("tidyverse", "spatstat", "GISTools", "rgdal", "ggpolypath", "sp", "sf", "tmap", "maptools", "spdep", "tmaptools","spatialreg", "rgeos", "RColorBrewer", "adehabitatHR", "raster", "leaflet", "spatialEco", "tm")
+
+df <- "MQ1_2010_2012_new.csv"
+MQ1_2010 <- read.csv(df, header = TRUE, stringsAsFactors = FALSE)
+MQ1_2010 <- filter(MQ1_2010, Date != "")
+head(MQ1_2010)
+
+#remove duplicates
+join <- distinct(MQ1_2010, Date, Time, Focal, OS, .keep_all = TRUE)
+
+x <- gsub("/", " ", join$Composition, fixed=TRUE)
+join$Composition <- x
+
+#remove infants/juveniles from group composition
+stopwords <- c("Ayax", "Boa", "Eli", "Kauoka", "Koinka", "Lela", "Maquis", "Nika", "Nina", "Olio", "Summer", "Violeta", "Vader", "Elena", "Kira", "JF", "INF",  "JUV", "IF")
+
+x  <- join$Composition     
+x  <-  removeWords(x,stopwords)     
+
+join$Composition <- x
+
+#there were weird issues with spacing
+x <- gsub("  ", " ", join$Composition, fixed=TRUE)
+join$Composition <- x
+x <- gsub("  ", " ", join$Composition, fixed=TRUE)
+join$Composition <- x
+x <- gsub(" ", "/", join$Composition, fixed=TRUE)
+join$Composition <- x
+
+#project, plot data
+coordinates(join) <- c("Longitude", "Latitude")
+proj4string(join) <- CRS("+proj=longlat + datum=WGS84")
+MQ1_2010_sp <- spTransform(join, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+is.projected(MQ1_2010_sp)
+plot(MQ1_2010_sp, pch=19, main = "Focal Points")
+
+MQ1_2010_sp$group_size <- str_count(MQ1_2010_sp$Composition,"/")
+group_size_2010_2012 <- summary(MQ1_2010_sp$group_size)
+stat <- c("minimum", "1st quartile", "median", "mean", "3rd quartile", "max")
+group_size_2010_2012 <- tibble(stat, group_size_2010_2012)
+group_size_2010_2012
+
+#point data for trees through 2012
+df2 <- "trees_2012.csv"
+trees_2012 <- read.csv(df2, header = TRUE, stringsAsFactors = FALSE)
+head(trees_2012)
+coordinates(trees_2012) <- c("FINAL_LON", "FINAL_LAT")
+proj4string(trees_2012) <- CRS("+proj=longlat + datum=WGS84")
+trees_2012_sp <- spTransform(trees_2012, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+plot(trees_2012_sp, pch=19, main = "Feeding Trees")
+
+#point data for the mineral lick, this point is already projected
+df3 <- "mineral_lick.csv"
+mineral_lick <- read.csv(df3, header = TRUE, stringsAsFactors = FALSE)
+head(mineral_lick)
+mineral_lick_sf <- st_as_sf(mineral_lick, coords = c("x_proj", "y_proj"), crs = 32718)
+mineral_lick_sp <- as(mineral_lick_sf, "Spatial")
+
+#point data for TBS field station
+df4 <- "TBS coordinates.csv"
+TBS_coordinates <- read.csv(df4, header = TRUE, stringsAsFactors = FALSE)
+head(TBS_coordinates)
+coordinates(TBS_coordinates) <- c("Longitude", "Latitude")
+proj4string(TBS_coordinates) <- CRS("+proj=longlat + datum=WGS84")
+TBS_coordinates_sp <- spTransform(TBS_coordinates, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+TBS_coordinates_sf <- st_as_sf(TBS_coordinates_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+
+#Load and project shapefile for Ecuador
+yasuni <- st_read("ec_provinces.shx")
+yasuni_sp <- as(yasuni, "Spatial")
+proj4string(yasuni_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m")
+yasuni_sf <- st_as_sf(yasuni_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
+
+#alternatively, can use the readOGR function to read in Shapefiles
+yasuni <- readOGR(dsn = "ec_provinces.shx", layer = "ec_provinces")
+yasuni_sp <- as(yasuni, "SpatialPolygonsDataFrame")
+proj4string(yasuni_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m")
+
+#plot TBS point over Ecuador Shapefile
+#plot function using sp
+plot(yasuni_sp, main = "Tiputini Biodiversity Station, Ecuador")
+plot(TBS_coordinates_sp, pch = 19, col = "red", add = TRUE)
+
+#ggplot function using sf
+ggplot() + geom_sf(data = yasuni_sf, fill = "wheat") + geom_sf(data = TBS_coordinates_sf, color = "red") + xlab("Longitude") + ylab("Latitude") + ggtitle("Tiputini Biodiversity Station, Ecuador") + coord_sf(crs = 32718)
+
+```
+**Generating home ranges and basic point pattern analysis**
+Generating home ranges
+  MCP vs. kernelUD methods
+Study area/window of observation
+  Assigning a home range as the window of observation
+  Clipping data to the window of observation
+Density plots and using the Cross L function
+
+```{r}
+#calculate home range area
+#MCP method
+polygon <- mcp(MQ1_2010_sp, percent = 100) #set to 100% to include all points
+plot(polygon, main = "Home Range, MCP method, 100%")
+as.data.frame(polygon) %>%
+  print
+polygon95 <- mcp(MQ1_2010_sp, percent = 95)
+plot(polygon95, main = "Home Range, MCP method, 95%")
+as.data.frame(polygon95) %>%
+  print
+
+#kernelUD method
+hr_kernel <- kernelUD(MQ1_2010_sp)
+hr_kernel95 <- getverticeshr(hr_kernel, percent = 95)
+plot(hr_kernel95, main = "Home Range, kernelUD method")
+as.data.frame(hr_kernel95) %>%
+  print
+
+#using 100% MCP, "clip" trees to stay in the same area
+trees_2012_sp_clp <- trees_2012_sp[polygon, ] 
+par(mfrow=c(1,2))
+plot(polygon); points(trees_2012_sp); title(main = list("Original", cex=0.8))
+plot(polygon); points(trees_2012_sp_clp); title(main = list("Clipped", cex=0.8))
+
+plot(polygon, main = "Home range with \n focal points and feeding trees")
+plot(MQ1_2010_sp, pch = 19, col = "blue", add = TRUE)
+plot(trees_2012_sp_clp, pch = 20, col = "green", add = TRUE)
+legend("bottomright", legend=c("focal points", "feeding trees"),
+      fill=c("blue", "green"), cex=0.8)
+
+#create ppp object (a 2D point pattern) to plot density for focal points
+MQ1_2010_ppp <- as.ppp(MQ1_2010_sp)
+polygon_ppp <- as.owin(polygon)
+Window(MQ1_2010_ppp) <- polygon_ppp
+
+ds <- density(MQ1_2010_ppp)
+plot(ds, main = "Focal point density \n preset color scheme")
+#can also change the color palette for plotting density
+colfunc <- colorRampPalette(c("#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c", "#08306b"))
+plot(ds, col = colfunc, main = "Focal point density, 2010-2012 \n scale = # points/m²")
+
+#create ppp object to plot density for tree points
+trees_2012_ppp <- as.ppp(trees_2012_sp_clp)
+Window(trees_2012_ppp) <- polygon_ppp
+
+ds_trees <- density(trees_2012_ppp)
+colfunc2 <- colorRampPalette(c("#e5f5e0", "#c7e9c0", "#a1d99b", "#74c476", "#41ab5d", "#238b45", "#006d2c", "#00441b"))
+plot(ds_trees, col = colfunc2, main = "Tree density, 2010-2012 \n scale = # points/m²")
+
+#superimpose focal and tree points to use Cross L function (test whether focal points cluster around/are positively associated with feeding trees); requires adjusting xy coordinates
+MQ1_2010_xy <- data.frame(MQ1_2010_ppp$x, MQ1_2010_ppp$y)
+MQ1_2010_sf <- st_as_sf(MQ1_2010_xy, coords = c("MQ1_2010_ppp.x", "MQ1_2010_ppp.y"), crs = 32718)
+MQ1_2010_sp2 <- as(MQ1_2010_sf, "Spatial")
+MQ1_2010_ppp <- as.ppp(MQ1_2010_sp2)
+trees_2012_xy <- data.frame(trees_2012_ppp$x, trees_2012_ppp$y)
+trees_2012_sf <- st_as_sf(trees_2012_xy, coords = c("trees_2012_ppp.x", "trees_2012_ppp.y"), crs = 32718)
+trees_2012_sp2 <- as(trees_2012_sf, "Spatial")
+trees_2012_ppp <- as.ppp(trees_2012_sp2)
+focals_plus_trees <- superimpose(focals = MQ1_2010_ppp, trees = trees_2012_ppp)
+str(focals_plus_trees)
+Window(focals_plus_trees) <- polygon_ppp
+plot(focals_plus_trees, main = "Superimposed point patterns \n 2010-2012", cols = c("blue", "green"))
+
+##Cross_L_function_2012 <- envelope.ppp(focals_plus_trees, fun = Lcross, i = "trees", j = "focals", correction = "Ripley", nsim = 1000)
+##plot(Cross_L_function_2012)
+##mad.test(focals_plus_trees, fun = Lcross, i = "trees", j = "focals", correction = "Ripley", nsim = 1000)
+
+```
+**Plotting attributes**
+Plotting points with attributes using spplot (can also be done with tmap)
+Aggregating points and plotting attributes by grid cells
+	Convert points to raster
+  Using tmap with Leaflet to create interactive maps
+```{r}
+#Plot group size/focal point (need to replace with Shapefile for TBS)
+colors_gs <- c("#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b")
+breaks_gs <- c(0, 5, 10, 15, 20, 25)
+countries_layer <- list("sp.polygons", yasuni_sp, fill="wheat")
+spplot(MQ1_2010_sp, "group_size", sp.layout = countries_layer, cuts=breaks_gs, col.regions=colors_gs, cex=1, main=list(label="Group Size at each Focal Point \n n=8584", cex=1), key.space = "right", xlim=c(-168998,478794), ylim=c(9444903,10161873))
+
+#create 100x100m grid and fit to home range
+grid <- raster(extent(polygon), resolution = c(100,100), crs = proj4string(polygon))
+grid <- extend(grid, c(1,1)) #adds one row and one column to each side of the raster
+# convert to SpatialPolygonsDataFrame
+gridPolygon <- rasterToPolygons(grid)
+intersectGridClipped <- intersect(gridPolygon, polygon)
+
+tmap_mode("view")
+tm_shape(intersectGridClipped) +
+tm_borders(lty = "solid", col = "black") + tm_shape(trees_2012_sp_clp) + tm_dots(size = 0.25, col = "green") + tm_layout(title= "Feeding Trees Across Home Range, grid cells",  title.position = c("right", "top")) + tm_scale_bar()
+
+#aggregate attributes (average group size, focal point count, tree count, intensity (i.e., sum of group sizes) for each grid cell
+points_agg <- aggregate(x= MQ1_2010_sp["group_size"], by=intersectGridClipped, FUN=mean)
+points_agg_count <- aggregate(x= MQ1_2010_sp["Focal"], by=intersectGridClipped, FUN=length)
+points_agg_trees <- aggregate(x= trees_2012_sp_clp["ID"], by=intersectGridClipped, FUN=length)
+points_agg_intensity <- aggregate(x= MQ1_2010_sp["group_size"], by=intersectGridClipped, FUN=sum)
+points_agg$count <- points_agg_count$Focal
+points_agg$count <- as.numeric(points_agg$count)
+points_agg$trees <- points_agg_trees$ID
+points_agg$trees[is.na(points_agg$trees)] <- 0 #replace NAs for trees with 0s
+points_agg$intensity <- points_agg_intensity$group_size
+points_agg <- spTransform(points_agg, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+
+#add attribute for distance from mineral lick to each grid cell center
+grid_ctr <- coordinates(points_agg)
+x_proj <- grid_ctr[,1]
+y_proj <- grid_ctr[,2]
+points_ctrs <- data.frame(x_proj, y_proj)
+ctrs_proj <- st_as_sf(points_ctrs, coords = c("x_proj", "y_proj"), crs = 32718)
+ctrs_sp <- as(ctrs_proj, "Spatial")
+dist_ml <- pointDistance(ctrs_sp, mineral_lick_sp, lonlat = FALSE)
+
+points_agg$dist_ml <- dist_ml
+points_agg$log_count <- log1p(points_agg$count)
+points_agg$log_intensity <- log1p(points_agg$intensity)
+points_agg <- sp.na.omit(points_agg, col.name = "group_size", margin = 1)
+summary(points_agg)
+
+#plot log_intensity against home range
+tm_shape(polygon) + tm_fill(col = "brown", alpha = .1) + tm_borders(col = "brown", lwd = 2) +
+tm_shape(points_agg) +
+tm_borders(lty = "solid", col = "black") + tm_shape(points_agg) + tm_fill(col = "log_intensity") + tm_borders(col = "black", lwd = .5) + tm_shape(mineral_lick_sf) + tm_dots(col = "black", size = 0.05, title = "mineral lick") + tm_layout(title= "Intensity of Home Range Use, 2010-2012",  title.position = c("right", "top")) + tm_scale_bar() + tm_add_legend("fill", 
+                labels = "mineral_lick", 
+                col = "black")
+```
