@@ -55,7 +55,7 @@ join$Composition <- x
 #project, plot data
 coordinates(join) <- c("Longitude", "Latitude")
 proj4string(join) <- CRS("+proj=longlat + datum=WGS84")
-MQ1_2010_sp <- spTransform(join, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+MQ1_2010_sp <- spTransform(join, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 is.projected(MQ1_2010_sp)
 plot(MQ1_2010_sp, pch = 19, main = "Focal Points")
 
@@ -71,7 +71,7 @@ trees_2012 <- read.csv(df2, header = TRUE, stringsAsFactors = FALSE)
 head(trees_2012)
 coordinates(trees_2012) <- c("FINAL_LON", "FINAL_LAT")
 proj4string(trees_2012) <- CRS("+proj=longlat + datum=WGS84")
-trees_2012_sp <- spTransform(trees_2012, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+trees_2012_sp <- spTransform(trees_2012, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 plot(trees_2012_sp, pch = 19, main = "Feeding Trees")
 
 #point data for the mineral lick, this point is already projected
@@ -87,26 +87,26 @@ TBS_coordinates <- read.csv(df4, header = TRUE, stringsAsFactors = FALSE)
 head(TBS_coordinates)
 coordinates(TBS_coordinates) <- c("Longitude", "Latitude")
 proj4string(TBS_coordinates) <- CRS("+proj=longlat + datum=WGS84")
-TBS_coordinates_sp <- spTransform(TBS_coordinates, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
-TBS_coordinates_sf <- st_as_sf(TBS_coordinates_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+TBS_coordinates_sp <- spTransform(TBS_coordinates, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
+TBS_coordinates_sf <- st_as_sf(TBS_coordinates_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 
 #Load Shapefile for Ecuador, these coordinates are already projected
 Ecuador <- st_read("ec_provinces.shx")
 Ecuador_sp <- as(Ecuador, "Spatial")
-proj4string(Ecuador_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84")
+proj4string(Ecuador_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m")
 Ecuador_sf <- st_as_sf(Ecuador_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 
 #Load and project Shapefile for TBS trail system
 trails <- st_read("trails.shx")
 trails_sp <- as(trails, "Spatial")
 proj4string(trails_sp) <- CRS("+proj=longlat + datum=WGS84")
-trails_sp <- spTransform(trails_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+trails_sp <- spTransform(trails_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 trails_sf <- st_as_sf(trails_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 
 #Alternatively, can use the readOGR function to read in Shapefiles;  here we read in a Shapefile for the Tiputini River
 rio_sp <- readOGR(dsn = "rio tiputini.shx", layer = "rio tiputini")
 proj4string(rio_sp) <- CRS("+proj=longlat + datum=WGS84")
-rio_sp <- spTransform(rio_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+rio_sp <- spTransform(rio_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 rio_sf <- st_as_sf(rio_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 
 #plot TBS point over Ecuador Shapefile and TBS point over trail Shapefile
@@ -258,7 +258,7 @@ points_agg$count <- as.numeric(points_agg$count)
 points_agg$trees <- points_agg_trees$ID
 points_agg$trees[is.na(points_agg$trees)] <- 0 #replace NAs for trees with 0s
 points_agg$intensity <- points_agg_intensity$group_size
-points_agg <- spTransform(points_agg, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+points_agg <- spTransform(points_agg, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 
 #add attribute for distance from mineral lick to each grid cell center
 grid_ctr <- coordinates(points_agg)
