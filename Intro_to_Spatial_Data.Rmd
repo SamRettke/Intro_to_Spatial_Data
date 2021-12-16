@@ -5,7 +5,7 @@ date: "12/12/2021"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 **Introduction to Spatial Data**
@@ -23,7 +23,7 @@ Preliminary visualizations using the plot and ggplot functions
   plotting points with and without Shapefiles for context
   
 ```{r}
-easypackages::libraries("tidyverse", "spatstat", "GISTools", "rgdal", "ggpolypath", "sp", "sf", "tmap", "maptools", "spdep", "tmaptools","spatialreg", "rgeos", "RColorBrewer", "adehabitatHR", "raster", "leaflet", "spatialEco", "tm")
+easypackages::libraries("tidyverse", "spatstat", "GISTools", "rgdal", "ggpolypath", "sp", "sf", "tmap", "maptools", "spdep", "tmaptools","spatialreg", "rgeos", "RColorBrewer", "adehabitatHR", "raster", "leaflet", "spatialEco", "tm", "gridExtra", "stringr")
 
 df <- "MQ1_2010_2012_new.csv"
 MQ1_2010 <- read.csv(df, header = TRUE, stringsAsFactors = FALSE)
@@ -33,7 +33,7 @@ head(MQ1_2010)
 #remove duplicates
 join <- distinct(MQ1_2010, Date, Time, Focal, OS, .keep_all = TRUE)
 
-x <- gsub("/", " ", join$Composition, fixed=TRUE)
+x <- gsub("/", " ", join$Composition, fixed = TRUE)
 join$Composition <- x
 
 #remove infants/juveniles from group composition
@@ -45,11 +45,11 @@ x  <-  removeWords(x,stopwords)
 join$Composition <- x
 
 #there were weird issues with spacing
-x <- gsub("  ", " ", join$Composition, fixed=TRUE)
+x <- gsub("  ", " ", join$Composition, fixed = TRUE)
 join$Composition <- x
-x <- gsub("  ", " ", join$Composition, fixed=TRUE)
+x <- gsub("  ", " ", join$Composition, fixed = TRUE)
 join$Composition <- x
-x <- gsub(" ", "/", join$Composition, fixed=TRUE)
+x <- gsub(" ", "/", join$Composition, fixed = TRUE)
 join$Composition <- x
 
 #project, plot data
@@ -57,7 +57,7 @@ coordinates(join) <- c("Longitude", "Latitude")
 proj4string(join) <- CRS("+proj=longlat + datum=WGS84")
 MQ1_2010_sp <- spTransform(join, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
 is.projected(MQ1_2010_sp)
-plot(MQ1_2010_sp, pch=19, main = "Focal Points")
+plot(MQ1_2010_sp, pch = 19, main = "Focal Points")
 
 MQ1_2010_sp$group_size <- str_count(MQ1_2010_sp$Composition,"/")
 group_size_2010_2012 <- summary(MQ1_2010_sp$group_size)
@@ -72,7 +72,7 @@ head(trees_2012)
 coordinates(trees_2012) <- c("FINAL_LON", "FINAL_LAT")
 proj4string(trees_2012) <- CRS("+proj=longlat + datum=WGS84")
 trees_2012_sp <- spTransform(trees_2012, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
-plot(trees_2012_sp, pch=19, main = "Feeding Trees")
+plot(trees_2012_sp, pch = 19, main = "Feeding Trees")
 
 #point data for the mineral lick, this point is already projected
 df3 <- "mineral_lick.csv"
@@ -90,24 +90,42 @@ proj4string(TBS_coordinates) <- CRS("+proj=longlat + datum=WGS84")
 TBS_coordinates_sp <- spTransform(TBS_coordinates, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
 TBS_coordinates_sf <- st_as_sf(TBS_coordinates_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
 
-#Load and project shapefile for Ecuador
-yasuni <- st_read("ec_provinces.shx")
-yasuni_sp <- as(yasuni, "Spatial")
-proj4string(yasuni_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m")
-yasuni_sf <- st_as_sf(yasuni_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
+#Load Shapefile for Ecuador, these coordinates are already projected
+Ecuador <- st_read("ec_provinces.shx")
+Ecuador_sp <- as(Ecuador, "Spatial")
+proj4string(Ecuador_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84")
+Ecuador_sf <- st_as_sf(Ecuador_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 
-#alternatively, can use the readOGR function to read in Shapefiles
-yasuni <- readOGR(dsn = "ec_provinces.shx", layer = "ec_provinces")
-yasuni_sp <- as(yasuni, "SpatialPolygonsDataFrame")
-proj4string(yasuni_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m")
+#Load and project Shapefile for TBS trail system
+trails <- st_read("trails.shx")
+trails_sp <- as(trails, "Spatial")
+proj4string(trails_sp) <- CRS("+proj=longlat + datum=WGS84")
+trails_sp <- spTransform(trails_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+trails_sf <- st_as_sf(trails_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
 
-#plot TBS point over Ecuador Shapefile
+#Alternatively, can use the readOGR function to read in Shapefiles;  here we read in a Shapefile for the Tiputini River
+rio_sp <- readOGR(dsn = "rio tiputini.shx", layer = "rio tiputini")
+proj4string(rio_sp) <- CRS("+proj=longlat + datum=WGS84")
+rio_sp <- spTransform(rio_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84"))
+rio_sf <- st_as_sf(rio_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
+
+#plot TBS point over Ecuador Shapefile and TBS point over trail Shapefile
 #plot function using sp
-plot(yasuni_sp, main = "Tiputini Biodiversity Station, Ecuador")
+par(mfrow = c(1,2))
+plot(Ecuador_sp, main = "TBS, Ecuador")
 plot(TBS_coordinates_sp, pch = 19, col = "red", add = TRUE)
 
+plot(trails_sp, main = "TBS trail system \n and Tiputini river")
+plot(TBS_coordinates_sp, pch = 19, col = "red", add = TRUE)
+plot(rio_sp, col = "blue", add = TRUE)
+
+#plot TBS point over Ecuador Shapefile and TBS point over trail Shapefile
 #ggplot function using sf
-ggplot() + geom_sf(data = yasuni_sf, fill = "wheat") + geom_sf(data = TBS_coordinates_sf, color = "red") + xlab("Longitude") + ylab("Latitude") + ggtitle("Tiputini Biodiversity Station, Ecuador") + coord_sf(crs = 32718)
+plot1 <- ggplot() + geom_sf(data = Ecuador_sf) + geom_sf(data = rio_sf, color = "blue") + geom_sf(data = TBS_coordinates_sf, color = "red") + xlab("Longitude") + ylab("Latitude") + ggtitle("TBS, Ecuador") + coord_sf(crs = 32718)
+
+plot2 <- ggplot() + geom_sf(data = trails_sf) + geom_sf(data = rio_sf, color = "blue") + geom_sf(data = TBS_coordinates_sf, color = "red") + xlab("Longitude") + ylab("Latitude") + ggtitle("TBS trail system \n and Tiputini river") + coord_sf(crs = 32718)
+
+grid.arrange(plot1, plot2, ncol = 2)
 
 ```
 **Generating home ranges and basic point pattern analysis**
@@ -133,21 +151,21 @@ as.data.frame(polygon95) %>%
 #kernelUD method
 hr_kernel <- kernelUD(MQ1_2010_sp)
 hr_kernel95 <- getverticeshr(hr_kernel, percent = 95)
-plot(hr_kernel95, main = "Home Range, kernelUD method")
+plot(hr_kernel95, main = "Home Range, kernelUD method, 95%")
 as.data.frame(hr_kernel95) %>%
   print
 
 #using 100% MCP, "clip" trees to stay in the same area
 trees_2012_sp_clp <- trees_2012_sp[polygon, ] 
-par(mfrow=c(1,2))
-plot(polygon); points(trees_2012_sp); title(main = list("Original", cex=0.8))
-plot(polygon); points(trees_2012_sp_clp); title(main = list("Clipped", cex=0.8))
+par(mfrow = c(1,2))
+plot(polygon); points(trees_2012_sp); title(main = list("Original", cex = 0.8))
+plot(polygon); points(trees_2012_sp_clp); title(main = list("Clipped", cex = 0.8))
 
 plot(polygon, main = "Home range with \n focal points and feeding trees")
 plot(MQ1_2010_sp, pch = 19, col = "blue", add = TRUE)
 plot(trees_2012_sp_clp, pch = 20, col = "green", add = TRUE)
-legend("bottomright", legend=c("focal points", "feeding trees"),
-      fill=c("blue", "green"), cex=0.8)
+legend("bottomright", legend = c("focal points", "feeding trees"),
+      fill = c("blue", "green"), cex = 0.8)
 
 #create ppp object (a 2D point pattern) to plot density for focal points
 MQ1_2010_ppp <- as.ppp(MQ1_2010_sp)
@@ -193,11 +211,31 @@ Aggregating points and plotting attributes by grid cells
 	Convert points to raster
   Using tmap with Leaflet to create interactive maps
 ```{r}
-#Plot group size/focal point (need to replace with Shapefile for TBS)
-colors_gs <- c("#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b")
+#Plot group size/focal point
+MQ1_2010_df <- as.data.frame(MQ1_2010_sp)
+MQ1_2010_Sammy <- str_subset(MQ1_2010_df$Composition, "Sammy/")
+MQ1_2010_Sammy <- filter(MQ1_2010_df, Composition %in% MQ1_2010_Sammy)
+MQ1_2010_Sammy_daytime <- filter(MQ1_2010_Sammy, Time %in% c("11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00"))
+MQ1_2010_Sammy_nighttime <- filter(MQ1_2010_Sammy, Time %in% c("17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30"))
+nrow(MQ1_2010_Sammy)
+nrow(MQ1_2010_Sammy_daytime)
+nrow(MQ1_2010_Sammy_nighttime)
+MQ1_2010_sf_Sammy <- st_as_sf(MQ1_2010_Sammy, coords = c("Longitude", "Latitude"), crs = 32718)
+MQ1_2010_sp_Sammy <- as(MQ1_2010_sf_Sammy, "Spatial")
+hist(MQ1_2010_Sammy$group_size, main = "Sammy's group size")
+MQ1_2010_sf_Sammy_daytime <- st_as_sf(MQ1_2010_Sammy_daytime, coords = c("Longitude", "Latitude"), crs = 32718)
+MQ1_2010_sp_Sammy_daytime <- as(MQ1_2010_sf_Sammy_daytime, "Spatial")
+hist(MQ1_2010_Sammy_daytime$group_size, main = "Sammy's group size, daytime")
+MQ1_2010_sf_Sammy_nighttime <- st_as_sf(MQ1_2010_Sammy_nighttime, coords = c("Longitude", "Latitude"), crs = 32718)
+MQ1_2010_sp_Sammy_nighttime <- as(MQ1_2010_sf_Sammy_nighttime, "Spatial")
+hist(MQ1_2010_Sammy_nighttime$group_size, main = "Sammy's group size, nighttime")
+
+colors_gs <- c("#c6dbef", "#6baed6", "#2171b5", "#08306b", "black")
 breaks_gs <- c(0, 5, 10, 15, 20, 25)
-countries_layer <- list("sp.polygons", yasuni_sp, fill="wheat")
-spplot(MQ1_2010_sp, "group_size", sp.layout = countries_layer, cuts=breaks_gs, col.regions=colors_gs, cex=1, main=list(label="Group Size at each Focal Point \n n=8584", cex=1), key.space = "right", xlim=c(-168998,478794), ylim=c(9444903,10161873))
+
+spplot(MQ1_2010_sp_Sammy_daytime, "group_size", sp.layout = c(trails_sp, rio_sp, polygon), cuts = breaks_gs, col.regions = colors_gs, cex = 1, main = list(label = "Sammy's group size, daytime \n n = 520", cex = 1), key.space = "right", xlim = c(369392, 374170), ylim = c(9927991, 9932024))
+
+spplot(MQ1_2010_sp_Sammy_nighttime, "group_size", sp.layout = c(trails_sp, rio_sp, polygon), cuts = breaks_gs, col.regions = colors_gs, cex = 1, main = list(label = "Sammy's group size, nighttime \n n = 192", cex = 1), key.space = "right", xlim = c(369392, 374170), ylim = c(9927991, 9932024))
 
 #create 100x100m grid and fit to home range
 grid <- raster(extent(polygon), resolution = c(100,100), crs = proj4string(polygon))
@@ -208,13 +246,13 @@ intersectGridClipped <- intersect(gridPolygon, polygon)
 
 tmap_mode("view")
 tm_shape(intersectGridClipped) +
-tm_borders(lty = "solid", col = "black") + tm_shape(trees_2012_sp_clp) + tm_dots(size = 0.25, col = "green") + tm_layout(title= "Feeding Trees Across Home Range, grid cells",  title.position = c("right", "top")) + tm_scale_bar()
+tm_borders(lty = "solid", col = "black") + tm_shape(trees_2012_sp_clp) + tm_dots(size = 0.25, col = "green") + tm_layout(title = "Feeding Trees Across Home Range, grid cells",  title.position = c("right", "top")) + tm_scale_bar()
 
 #aggregate attributes (average group size, focal point count, tree count, intensity (i.e., sum of group sizes) for each grid cell
-points_agg <- aggregate(x= MQ1_2010_sp["group_size"], by=intersectGridClipped, FUN=mean)
-points_agg_count <- aggregate(x= MQ1_2010_sp["Focal"], by=intersectGridClipped, FUN=length)
-points_agg_trees <- aggregate(x= trees_2012_sp_clp["ID"], by=intersectGridClipped, FUN=length)
-points_agg_intensity <- aggregate(x= MQ1_2010_sp["group_size"], by=intersectGridClipped, FUN=sum)
+points_agg <- aggregate(x = MQ1_2010_sp["group_size"], by = intersectGridClipped, FUN = mean)
+points_agg_count <- aggregate(x = MQ1_2010_sp["Focal"], by = intersectGridClipped, FUN = length)
+points_agg_trees <- aggregate(x = trees_2012_sp_clp["ID"], by = intersectGridClipped, FUN = length)
+points_agg_intensity <- aggregate(x = MQ1_2010_sp["group_size"], by = intersectGridClipped, FUN = sum)
 points_agg$count <- points_agg_count$Focal
 points_agg$count <- as.numeric(points_agg$count)
 points_agg$trees <- points_agg_trees$ID
@@ -238,9 +276,10 @@ points_agg <- sp.na.omit(points_agg, col.name = "group_size", margin = 1)
 summary(points_agg)
 
 #plot log_intensity against home range
-tm_shape(polygon) + tm_fill(col = "brown", alpha = .1) + tm_borders(col = "brown", lwd = 2) +
+tm_shape(trails_sp) + tm_lines(col = "red", lty = "dotted") +
+tm_shape(polygon) + tm_fill(col = "wheat", alpha = .5) + tm_borders(col = "wheat", lwd = 2) +
 tm_shape(points_agg) +
-tm_borders(lty = "solid", col = "black") + tm_shape(points_agg) + tm_fill(col = "log_intensity") + tm_borders(col = "black", lwd = .5) + tm_shape(mineral_lick_sf) + tm_dots(col = "black", size = 0.05, title = "mineral lick") + tm_layout(title= "Intensity of Home Range Use, 2010-2012",  title.position = c("right", "top")) + tm_scale_bar() + tm_add_legend("fill", 
+tm_borders(lty = "solid", col = "black") + tm_shape(points_agg) + tm_fill(col = "log_intensity") + tm_borders(col = "black", lwd = .5) + tm_shape(mineral_lick_sf) + tm_dots(col = "black", size = 0.05, title = "mineral lick") + tm_layout(title = "Intensity of Home Range Use, 2010-2012",  title.position = c("right", "top")) + tm_scale_bar() + tm_add_legend("fill", 
                 labels = "mineral_lick", 
                 col = "black")
 ```
