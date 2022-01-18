@@ -1,5 +1,5 @@
 ---
-title: "Intro_to_Spatial_Data"
+title: "Intro to Spatial Data"
 author: "Sam Rettke"
 date: "12/12/2021"
 output: html_document
@@ -8,20 +8,17 @@ output: html_document
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-**Introduction to Spatial Data**
-  Using MQ1 focal data 2010-2012 and feeding tree data through 2012
+## Background ##
+In recent years, affordable and accessible GPS units or GPS-enabled smartphones, watches, tablets, cameras, etc. have allowed for the recording of data with precise locations attached. This increase in the amount of available spatial data has been associated with an increase in demand for visualizations and analyses of such data, to exploit the richness of analysis that location affords.
 
-Outline:
-sp vs. sf packages
-Getting data into R
-	Data frames
-	Shapefiles
-Coordinate reference systems and projections
-	Assigning/naming the CRS
-	Changing the CRS
-Preliminary visualizations using the plot and ggplot functions
-  plotting points with and without Shapefiles for context
-  
+Spatial data can be processed and analyzed using a geographic information system (GIS). There are several packages and software available capable of working with spatial data, but in many cases, data observations may not be independent or the relationship between variables may vary across geographical space. Thus standard statistical packages are often inadequate for analysis as they cannot account for the complexities of spatial processes and spatial data. Additionally, although standard GIS packages and software, such as the ESRI system of products, provide tools for the visualization of spatial data, their analytical capabilities are relatively limited and inflexible. Some R packages, on the other hand, are created by experts and innovators in the field of spatial data analysis and visualization, making R one of the best environments for spatial data analysis and manipulation. R can also be used to complement other mapping programs; for example, with visualizations completed in ArcMap followed by data analysis in R.
+
+The sp format, as defined in the {sp} package, has been the dominant spatial data format in R for several years and provides an organized set of classes for storing spatial data. These classes (or sp objects) correspond to the three main types of vector data- data used to represent real world features in a GIS- points (i.e., “SpatialPoints”), lines (i.e., “SpatialLines”), and areas (i.e., “SpatialPolygons”). Tools drawn from a range of packages, such as {rgdal}, {maptools}, and {GISTools} are underpinned by the sp data format and used for spatial data analysis, allowing for a unified method for switching between packages. Currently, however, the R spatial community is in a period of transition from sp to sf formats. 
+
+Simple features or simple feature access refers to a formal standard that describes how objects in the real world can be represented, stored, and accessed, with emphasis on the spatial geometry of these objects. The standard is widely implemented in spatial databases (such as PostGIS), commercial GIS (e.g., ESRI ArcGIS) and forms the vector data basis for libraries such as GDAL. R had previously lacked a complete implementation of simple features, making conversions at times convoluted, inefficient or incomplete; the package {sf} is intended to fill this gap. A feature is thought of as a thing, or an object in the real world, that has a geometry (i.e., coordinates) describing where on Earth the feature is located. Just as objects in R often consist of other objects, a set of features can form a single feature. So, a tree can be a feature, a forest stand can be a feature, or an entire country can be a feature. There are many sf feature types, but the key ones again correspond to points (“Point”), lines (“Linestring”), and areas (“Polygon”). The {sf} package has a stronger theoretical structure than {sp}, with for example multipoint features being composed of point features etc., yet many packages with spatial operations and functions for spatial analyses have not yet been updated to work with sf. Therefore, both formats are introduced here and used throughout this module, with conversion between the two occurring as needed.
+
+In addition to a geometry, spatial data may also have any number of additional attributes, which describe other properties of a feature (e.g., population, length, area, etc.). The attributes associated with individual features (lines, points, and areas in vector data and cell values in raster data) provide the basis for spatial analyses and geographical investigation. 
+It is common for point data to come in tabular format rather than as an R spatial object (i.e. of class sp or sf format), so importing data for GIS analyses is often similar to importing data for other R analyses. As with non-spatial data, data frames are the most useful structure in R for operating with datasets consisting of sets of features with geometries and attributes. In spatial data frames, each record (row) typically represents a single feature, while the fields (columns) describe the variables or attributes associated with that feature. For example, in this module we will work primarily with a dataset of the ranging patterns for a group of spider monkeys, *Ateles belzebuth*, at Tiputini Biodiversity Station from July 2010 through June 2012. Point data were originally collected at 15-minute intervals using handheld GPS units while performing behavioral focal follows on the individuals of group MQ1. Let’s load some packages and import this dataset now:
 ```{r}
 easypackages::libraries("tidyverse", "spatstat", "GISTools", "rgdal", "ggpolypath", "sp", "sf", "tmap", "maptools", "spdep", "tmaptools","spatialreg", "rgeos", "RColorBrewer", "adehabitatHR", "raster", "leaflet", "spatialEco", "tm", "gridExtra", "stringr")
 
@@ -29,88 +26,134 @@ df <- "MQ1_2010_2012_new.csv"
 MQ1_2010 <- read.csv(df, header = TRUE, stringsAsFactors = FALSE)
 MQ1_2010 <- filter(MQ1_2010, Date != "")
 head(MQ1_2010)
-
+```
+As we can see, the dataset includes not only the focal point locations of the group given in latitude and longitude, but attributes including the subgroup composition, date and time of observation, and other details (the focal and/or observation number, observer, etc.) at each of those points. We can manipulate this data frame as we would any other, selecting and subsetting using single bracket notation ([ ]), or selecting a named column using the $ operator or the equivalent double bracket notation ([[ ]]). For example, here we will remove the duplicate records, remove infants and juveniles from the subgroup composition, and fix some issues with spacing in the group composition field to simplify some future analyses and create an updated data frame called MQ1_2010_2.
+```{r}
 #remove duplicates
-join <- distinct(MQ1_2010, Date, Time, Focal, OS, .keep_all = TRUE)
+MQ1_2010_2 <- distinct(MQ1_2010, Date, Time, Focal, OS, .keep_all = TRUE)
 
-x <- gsub("/", " ", join$Composition, fixed = TRUE)
-join$Composition <- x
+x <- gsub("/", " ", MQ1_2010_2$Composition, fixed = TRUE)
+MQ1_2010_2$Composition <- x
 
 #remove infants/juveniles from group composition
 stopwords <- c("Ayax", "Boa", "Eli", "Kauoka", "Koinka", "Lela", "Maquis", "Nika", "Nina", "Olio", "Summer", "Violeta", "Vader", "Elena", "Kira", "JF", "INF",  "JUV", "IF")
 
-x  <- join$Composition     
+x  <- MQ1_2010_2$Composition     
 x  <-  removeWords(x,stopwords)     
 
-join$Composition <- x
+MQ1_2010_2$Composition <- x
 
-#there were weird issues with spacing
-x <- gsub("  ", " ", join$Composition, fixed = TRUE)
-join$Composition <- x
-x <- gsub("  ", " ", join$Composition, fixed = TRUE)
-join$Composition <- x
-x <- gsub(" ", "/", join$Composition, fixed = TRUE)
-join$Composition <- x
+#correct some issues with spacing
+x <- gsub("  ", " ", MQ1_2010_2$Composition, fixed = TRUE)
+MQ1_2010_2$Composition <- x
+x <- gsub("  ", " ", MQ1_2010_2$Composition, fixed = TRUE)
+MQ1_2010_2$Composition <- x
+x <- gsub(" ", "/", MQ1_2010_2$Composition, fixed = TRUE)
+MQ1_2010_2$Composition <- x
+```
+## Projections and Coordinate Reference Systems ##
+Now we have our updated data frame, but in order to carry out spatial analyses, we want to convert this data frame to the sp or sf format. There are few ways to do this, but one of the most straightforward sequences, particularly if you need to re-project the geometry/coordinates, is the following:
 
-#project, plot data
-coordinates(join) <- c("Longitude", "Latitude")
-proj4string(join) <- CRS("+proj=longlat + datum=WGS84")
-MQ1_2010_sp <- spTransform(join, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
-is.projected(MQ1_2010_sp)
+Assign the coordinates for the spatial object
+
+Assign the current projection of the coordinates
+
+Transform from one coordinate reference system (CRS) to another, while converting to an sp object
+
+If required, convert the sp object to sf using st_as_sf()
+
+These steps are important because they allow us to define a common CRS, and project all data into the same geospatial extent. Coordinate reference systems are like measurement units for coordinates: they provide a standardized way of describing locations and specify to which location on Earth a particular coordinate pair refers. Coordinates can only be placed on the Earth’s surface when their CRS is known. In R, when data with different CRS are combined it is important to transform them to a common CRS so they align with one another and can be analyzed; this is similar to ensuring the units are the same when measuring volume or distances.
+
+The CRS includes the projection, datum, ellipsoid, and units, and in R is described via the proj4string notation from the PROJ.4 library. The datum defines the origin and orientation of the coordinate axes, as well the size/shape of Earth, and always specifies the ellipsoid that is used (but the ellipsoid does not specify the datum!) A particular CRS can be referenced by its EPSG code, the integer ID for a particular, known CRS that can be resolved into a proj4string. There are two general types of CRS: 
+
+1) unprojected (a.k.a. Geographic): Latitude/Longitude for referencing location on the ellipsoid Earth
+
+2) projected: Easting/Northing for referencing location on 2D representations of Earth
+
+In other words, the elliptical Earth can be projected onto a flat surface (i.e., a paper map). Map coordinates of a point are computed from its ellipsoidal latitude and longitude by a standard formula known as a map projection. But because it is impossible to flatten a round object without distortion, this results in trade-offs between area, direction, shape, and distance. There is no "best" projection, but some projections are better suited to different applications.
+The Universal Transverse Mercator (UTM) projection, for example, is commonly used in research because it tends to be more locally accurate and has attributes that make estimating distance easy and accurate. Positions are described using Easting and Northing coordinates. The mercator projection preserves angles and direction, but distorts distance. To minimize this distortion, the UTM divides the Earth into sixty zones; the UTM zone for your location of interest can easily be found online. For example, the points collected at TBS in Eastern Ecuador are mapped to UTM zone 18 south.
+
+Now let’s convert our spider monkey data frame into an sp object. Our initial coordinates are given in latitude/longitude, but we want to transform this to a UTM projection as we’ll be mapping and analyzing points on a 2D surface. The World Geodetic System 1984 (WGS84) is defined and maintained by the United States National Geospatial-Intelligence Agency, and so is typically the default for U.S. GPS systems; therefore, the datum for our coordinates is WGS84. Lastly, we'll select meters as our units. Once we've projected, we can use the generic plot() function to see a spatial representation of our points.
+```{r}
+#project, plot focal points
+coordinates(MQ1_2010_2) <- c("Longitude", "Latitude") #x, y values represent the longitude and latitude, respectively and match the names of the fields in our original data table
+proj4string(MQ1_2010_2) <- CRS("+proj=longlat +datum=WGS84") #note that the data need to have an initial projection assigned in order to be transformed; here we know that our initial coordinates are in latitude-longitude
+MQ1_2010_sp <- spTransform(MQ1_2010_2, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
+MQ1_2010_sf <- st_as_sf(MQ1_2010_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
 plot(MQ1_2010_sp, pch = 19, main = "Focal Points")
+```
 
+
+We can also ask R to confirm that these points are indeed projected or examine a summary of our sp object.
+```{r}
+is.projected(MQ1_2010_sp)
+summary(MQ1_2010_sp)
+```
+As with non-spatial data frames and tibbles, the data frame of these spatial objects can be accessed to examine, manipulate, or classify the attribute data or generate simple summaries. Here we’ll add an attribute to our sp object for group size (defined here as the number of adult individuals at any given point) using our attribute for group composition, then generate a summary. For example, the mean group size across all our focal points is 5.33.
+```{r}
 MQ1_2010_sp$group_size <- str_count(MQ1_2010_sp$Composition,"/")
 group_size_2010_2012 <- summary(MQ1_2010_sp$group_size)
 stat <- c("minimum", "1st quartile", "median", "mean", "3rd quartile", "max")
 group_size_2010_2012 <- tibble(stat, group_size_2010_2012)
 group_size_2010_2012
-
+```
+Now let’s try importing and projecting two other spatial datasets; the first lists the latitude-longitude locations of known spider monkey feeding trees through 2012 to correspond to the ranging dataset, and the second is the single point location for the Tiputini Biodiversity Station.
+```{r}
 #point data for trees through 2012
 df2 <- "trees_2012.csv"
 trees_2012 <- read.csv(df2, header = TRUE, stringsAsFactors = FALSE)
 head(trees_2012)
 coordinates(trees_2012) <- c("FINAL_LON", "FINAL_LAT")
-proj4string(trees_2012) <- CRS("+proj=longlat + datum=WGS84")
-trees_2012_sp <- spTransform(trees_2012, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
+proj4string(trees_2012) <- CRS("+proj=longlat +datum=WGS84")
+trees_2012_sp <- spTransform(trees_2012, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
+trees_2012_sf <- st_as_sf(trees_2012_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
 plot(trees_2012_sp, pch = 19, main = "Feeding Trees")
-
-#point data for the mineral lick, this point is already projected
-df3 <- "mineral_lick.csv"
-mineral_lick <- read.csv(df3, header = TRUE, stringsAsFactors = FALSE)
-head(mineral_lick)
-mineral_lick_sf <- st_as_sf(mineral_lick, coords = c("x_proj", "y_proj"), crs = 32718)
-mineral_lick_sp <- as(mineral_lick_sf, "Spatial")
 
 #point data for TBS field station
 df4 <- "TBS coordinates.csv"
 TBS_coordinates <- read.csv(df4, header = TRUE, stringsAsFactors = FALSE)
 head(TBS_coordinates)
 coordinates(TBS_coordinates) <- c("Longitude", "Latitude")
-proj4string(TBS_coordinates) <- CRS("+proj=longlat + datum=WGS84")
-TBS_coordinates_sp <- spTransform(TBS_coordinates, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
-TBS_coordinates_sf <- st_as_sf(TBS_coordinates_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
-
-#Load Shapefile for Ecuador, these coordinates are already projected
+proj4string(TBS_coordinates) <- CRS("+proj=longlat +datum=WGS84")
+TBS_coordinates_sp <- spTransform(TBS_coordinates, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
+TBS_coordinates_sf <- st_as_sf(TBS_coordinates_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
+```
+Sometimes we’ll have spatial data already provided in projected easting/northing coordinates. For example, here we import the point location of a mineral lick frequently used by the group. However, we still want to convert this to sp or sf format. To shake things up, let’s convert it first to sf, noting that we’ll use the coords argument to designate which columns in our data frame are the coordinates, and the crs argument to designate the projection. In this case, 32718 is the EPSG code which corresponds to UTM zone 18 south. Then we can also choose to convert from sf to sp using the as() function.
+```{r}
+#point data for the mineral lick
+df3 <- "mineral_lick.csv"
+mineral_lick <- read.csv(df3, header = TRUE, stringsAsFactors = FALSE)
+head(mineral_lick)
+mineral_lick_sf <- st_as_sf(mineral_lick, coords = c("x_proj", "y_proj"), crs = 32718)
+mineral_lick_sp <- as(mineral_lick_sf, "Spatial")
+```
+Often, data is provided (especially from online repositories) in shapefile format, rather than as a data table. A shapefile is a simple, nontopological format for storing the location and associated attributes of a geographic feature, which can be represented by points, lines, or areas. Once we’ve downloaded the shapefiles, there are a couple of options for loading them into R, as seen below. We will read in two shapefiles using the st_read() function- the first for an outline of the country of Ecuador with coordinates already projected, the second for the TBS trail system which needs to be projected into UTM as we did for our points above. Then we will use the readOGR function to read in a shapefile for the Tiputini River (which also needs to be projected!).
+```{r}
+#Load shapefile for Ecuador, convert to sp/sf
 Ecuador <- st_read("ec_provinces.shx")
 Ecuador_sp <- as(Ecuador, "Spatial")
-proj4string(Ecuador_sp) <- CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m")
-Ecuador_sf <- st_as_sf(Ecuador_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
+proj4string(Ecuador_sp) <- CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m")
+Ecuador_sf <- st_as_sf(Ecuador_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
 
-#Load and project Shapefile for TBS trail system
+#Load and project shapefile for the TBS trail system, convert to sp/sf
 trails <- st_read("trails.shx")
 trails_sp <- as(trails, "Spatial")
-proj4string(trails_sp) <- CRS("+proj=longlat + datum=WGS84")
-trails_sp <- spTransform(trails_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
-trails_sf <- st_as_sf(trails_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
+proj4string(trails_sp) <- CRS("+proj=longlat +datum=WGS84")
+trails_sp <- spTransform(trails_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
+trails_sf <- st_as_sf(trails_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
 
-#Alternatively, can use the readOGR function to read in Shapefiles;  here we read in a Shapefile for the Tiputini River
+#Load and project shapefile for the Tiputini River, convert to sp/sf
 rio_sp <- readOGR(dsn = "rio tiputini.shx", layer = "rio tiputini")
-proj4string(rio_sp) <- CRS("+proj=longlat + datum=WGS84")
-rio_sp <- spTransform(rio_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
-rio_sf <- st_as_sf(rio_sp, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
-
-#plot TBS point over Ecuador Shapefile and TBS point over trail Shapefile
-#plot function using sp
+proj4string(rio_sp) <- CRS("+proj=longlat +datum=WGS84")
+rio_sp <- spTransform(rio_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
+rio_sf <- st_as_sf(rio_sp, CRS("+proj=utm +zone=18 + south +datum=WGS84 +units=m"))
+```
+## Basic Plots with Context ##
+### using plot() and ggplot() ###
+These shapefiles can be used to provide context for each other and for the spider monkey focal points and feeding tree locations we imported above. For example, the point for the field station has little meaning its own, but if we map it over the shapefile for Ecuador, we can visualize where in the country TBS is located. Or we can plot it over the trail and river shapefiles to see how these features are related to each other. Similarly, as we saw above, if we simply plot all the focal point locations of the spider monkey group or all of the feeding trees, this does not really provide much useful information. If we overlay those points on layers of data for the TBS trail system and river, however, suddenly this can inform where in relation to these features the group spends its time. Now we can make inferences about how the factors in these various layers might influence whether an observer is likely to see the group at a particular location. There are a couple of familiar options when making these basic maps. Here, we again use plot() to map sp objects, but add in context, and try ggplot() to map sf objects.
+```{r}
+#plot TBS point over Ecuador Shapefile and TBS point over trail and river shapefiles
+#plot function using sp objects
 par(mfrow = c(1,2))
 plot(Ecuador_sp, main = "TBS, Ecuador")
 plot(TBS_coordinates_sp, pch = 19, col = "red", add = TRUE)
@@ -119,23 +162,25 @@ plot(trails_sp, main = "TBS trail system \n and Tiputini river")
 plot(TBS_coordinates_sp, pch = 19, col = "red", add = TRUE)
 plot(rio_sp, col = "blue", add = TRUE)
 
-#plot TBS point over Ecuador Shapefile and TBS point over trail Shapefile
-#ggplot function using sf
+#plot TBS point over Ecuador Shapefile and TBS point over trail and river shapefiles
+#ggplot function using sf objects
 plot1 <- ggplot() + geom_sf(data = Ecuador_sf) + geom_sf(data = rio_sf, color = "blue") + geom_sf(data = TBS_coordinates_sf, color = "red") + xlab("Longitude") + ylab("Latitude") + ggtitle("TBS, Ecuador") + coord_sf(crs = 32718)
 
 plot2 <- ggplot() + geom_sf(data = trails_sf) + geom_sf(data = rio_sf, color = "blue") + geom_sf(data = TBS_coordinates_sf, color = "red") + xlab("Longitude") + ylab("Latitude") + ggtitle("TBS trail system \n and Tiputini river") + coord_sf(crs = 32718)
 
 grid.arrange(plot1, plot2, ncol = 2)
 
-```
-**Generating home ranges and basic point pattern analysis**
-Generating home ranges
-  MCP vs. kernelUD methods
-Study area/window of observation
-  Assigning a home range as the window of observation
-  Clipping data to the window of observation
-Density plots and using the Cross L function
+#plot focal points over trail and river shapefiles using plot and ggplot
+plot(trails_sp, main = "Focal points with trail system \n and Tiputini river, plot")
+plot(MQ1_2010_sp, pch = 19, col = "red", add = TRUE)
+plot(rio_sp, col = "blue", add = TRUE)
 
+ggplot() + geom_sf(data = trails_sf) + geom_sf(data = rio_sf, color = "blue") + geom_sf(data = MQ1_2010_sf, color = "red") + xlab("Longitude") + ylab("Latitude") + ggtitle("Focal points with trail system \n and Tiputini river, ggplot") + coord_sf(crs = 32718)
+```
+
+
+## Generating Home Ranges ##
+Now that we’ve done some basic importing, projections, and mapping, let’s try some more interesting analyses. Across the primate order, there is extreme inter- and intra-specific variation in the size of home ranges and groups, and the distances groups travel per day. Additionally, the factors determining home range size and changes in home range use over time remain poorly understood for most primate species. We can estimate our spider monkey group’s home range from their focal point locations using a few different methods implemented with the {adehabitatHR} package, which accepts only sp format objects (not sf). The minimum convex polygon (MCP) is probably the most widely used of these methods, as it is quick and easy to compute from coordinate data. The mcp() function calculates the smallest convex polygon enclosing all the relocations (points) of the animal (or group); this polygon is then considered the home range.
 ```{r}
 #calculate home range area
 #MCP method
@@ -143,18 +188,26 @@ polygon <- mcp(MQ1_2010_sp, percent = 100) #set to 100% to include all points
 plot(polygon, main = "Home Range, MCP method, 100%")
 as.data.frame(polygon) %>%
   print
+```
+We can also exclude some points if we think they may be outliers and not accurately represent the group's home range. We simply need to select the percentage of points we want to include.
+```{r}
 polygon95 <- mcp(MQ1_2010_sp, percent = 95)
 plot(polygon95, main = "Home Range, MCP method, 95%")
 as.data.frame(polygon95) %>%
   print
-
+```
+Although the MCP method has met a large success in the ecological literature, many researchers have stressed that the utilization distribution (UD) model is more appropriate. Under this model, the animals’ use of space can be described by a bivariate probability density function, the UD, which gives the probability density to relocate the animal at any place according to the coordinates (x, y) of this place. The function kernelUD(), also of the package {adehabitatHR}, implements this method to estimate the UD in each pixel of a grid superposed to the relocations. Next, the function getverticeshr() allows for home range estimation, because the home range is deduced from the UD as the minimum area on which the probability to relocate the animal is equal to a specified value. For example, the 95% home range corresponds to the smallest area on which the probability to relocate the animal is equal to 0.95. 
+```{r}
 #kernelUD method
 hr_kernel <- kernelUD(MQ1_2010_sp)
 hr_kernel95 <- getverticeshr(hr_kernel, percent = 95)
 plot(hr_kernel95, main = "Home Range, kernelUD method, 95%")
 as.data.frame(hr_kernel95) %>%
   print
-
+```
+## Basic Point Pattern Analysis ##
+Now that we’ve established the group’s home range, we can use it as the “window of observation”- or study area- to carry out some basic point pattern analysis. Point pattern analysis is simply the study of the spatial arrangement of a group of points. For example, we can model the density of a set of points and compare it to a null model of complete spatial randomness (CSR) to determine whether some underlying factor influences the distribution of points. Or, we can look at the distances between points to determine whether they are clumped or dispersed compared to CSR. Because point pattern analysis is sensitive to the study area, it is important to determine the study area as objectively as possible. Here we will use the home range generated using the MCP method, so our point pattern will be the entire collection of points located within that home range. While our point pattern for the ranging data will therefore include all focal points, say we also want to analyze the point pattern of feeding trees within the home range. In this case we do not want to analyze all of the feeding tree data but only those records that describe events in our study area, so we need to “clip” the data. This can be done simply by using our home range, or polygon, to subset the collection of feeding trees.
+```{r}
 #using 100% MCP, "clip" trees to stay in the same area
 trees_2012_sp_clp <- trees_2012_sp[polygon, ] 
 par(mfrow = c(1,2))
@@ -166,14 +219,23 @@ plot(MQ1_2010_sp, pch = 19, col = "blue", add = TRUE)
 plot(trees_2012_sp_clp, pch = 20, col = "green", add = TRUE)
 legend("bottomright", legend = c("focal points", "feeding trees"),
       fill = c("blue", "green"), cex = 0.8)
+```
 
-#create ppp object (a 2D point pattern) to plot density for focal points
+
+Now we can see that both our ranging data and clipped tree locations are confined to the home range. Then, we can map the density of each type of point within the home range. The most straightforward way to do this is by creating a ppp object- a 2D point pattern- from each sp object, assigning the polygon as the window of observation for the ppp object, calculating the density using the density() function, and finally, plotting the results.
+```{r}
+#create ppp object to plot density for focal points
 MQ1_2010_ppp <- as.ppp(MQ1_2010_sp)
 polygon_ppp <- as.owin(polygon)
 Window(MQ1_2010_ppp) <- polygon_ppp
 
 ds <- density(MQ1_2010_ppp)
 plot(ds, main = "Focal point density \n preset color scheme")
+```
+
+
+As we can see, the density function includes a preset color scheme, but we can also assign our own color palette using colors from the RColorBrewer package (https://colorbrewer2.org/#type=sequential&scheme=BuGn&n=3) and use it when plotting the results of the density function.
+```{r}
 #can also change the color palette for plotting density
 colfunc <- colorRampPalette(c("#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c", "#08306b"))
 plot(ds, col = colfunc, main = "Focal point density, 2010-2012 \n scale = # points/m²")
@@ -185,7 +247,11 @@ Window(trees_2012_ppp) <- polygon_ppp
 ds_trees <- density(trees_2012_ppp)
 colfunc2 <- colorRampPalette(c("#e5f5e0", "#c7e9c0", "#a1d99b", "#74c476", "#41ab5d", "#238b45", "#006d2c", "#00441b"))
 plot(ds_trees, col = colfunc2, main = "Tree density, 2010-2012 \n scale = # points/m²")
+```
 
+
+Comparing the focal point and tree density plots side-by-side hints that the areas with the highest densities overlap and therefore the processes generating these patterns may not be independent. In fact, we would expect there to be a relationship between focal points and feeding trees. But this can be confirmed by superimposing the focal point and feeding tree locations into a single ppp-object, with the focal points and trees considered as “marks.” In other words, the dataset can be viewed as a set of points where each point is tagged (or marked) with its parent population (either focal points or feeding trees). This is a bit convoluted as it requires reassigning the xy coordinates and reconverting to new ppp objects before superimposing them, but can be done using the code below.
+```{r}
 #superimpose focal and tree points to use Cross L function (test whether focal points cluster around/are positively associated with feeding trees); requires adjusting xy coordinates
 MQ1_2010_xy <- data.frame(MQ1_2010_ppp$x, MQ1_2010_ppp$y)
 MQ1_2010_sf <- st_as_sf(MQ1_2010_xy, coords = c("MQ1_2010_ppp.x", "MQ1_2010_ppp.y"), crs = 32718)
@@ -199,23 +265,25 @@ focals_plus_trees <- superimpose(focals = MQ1_2010_ppp, trees = trees_2012_ppp)
 str(focals_plus_trees)
 Window(focals_plus_trees) <- polygon_ppp
 plot(focals_plus_trees, main = "Superimposed point patterns \n 2010-2012", cols = c("blue", "green"))
+```
 
-##Cross_L_function_2012 <- envelope.ppp(focals_plus_trees, fun = Lcross, i = "trees", j = "focals", correction = "Ripley", nsim = 1000)
+
+Then we can use the Cross L function to analyze whether the spatial association between focal points and feeding trees in our single ppp object differs significantly from CSR (i.e., to answer the question do focal points tend to cluster around feeding trees moreso than expected by chance?). Designating the mark types, i and j, as "trees" and "focals" respectively ensures distances are measured from feeding trees to focal point locations (rather than the other way around). The results of the Cross L function are plotted against an envelope generated from 1000 Monte Carlo simulations to visualize a comparison against CSR at various distances. 
+
+Because this is not a formal significance test, however, we also calculate the maximum absolute deviation- the absolute value of the largest discrepancy between two functions- using the function mad.test(). This compares the estimated Cross L function against that generated from 1000 Monte Carlo simulations to obtain a p-value for the deviation from CSR.
+```{r}
+##Cross_L_function_2012 <- envelope.ppp(focals_plus_trees, fun = Lcross, i = "trees", j = "focals", correction = "Ripley", nsim = 1000) #"Ripley" refers to the type of edge correction
 ##plot(Cross_L_function_2012)
 ##mad.test(focals_plus_trees, fun = Lcross, i = "trees", j = "focals", correction = "Ripley", nsim = 1000)
-
 ```
-**Plotting attributes**
-Plotting points with attributes using spplot (can also be done with tmap)
-Aggregating points and plotting attributes by grid cells
-	Convert points to raster
-  Using tmap with Leaflet to create interactive maps
+## Plotting Spatial Data with Attributes ##
+Now that we’ve outlined basic commands for plotting data and producing maps using object geometries, we can focus on mapping the spatial distribution of data attributes. We’ve already seen how the data within an sp or sf object can be accessed, but in some cases it is easiest to convert these objects back to a data frame before additional data manipulation. Let’s say, for example, that we want to examine the ranging patterns for a particular individual- Sammy- but that we want to know not only where he ranges but the group size with which he ranges. Furthermore, let’s say we want to determine whether his group size during the middle of the day (from 11:15am to 12:45pm) appears to differ from his group size at night (from 5:00pm to 6:30pm). To do this we’ll execute the following block of code, which converts from sp to a data frame, subsets the data frame for only those group compositions which include Sammy, filters the data frame for our two times of interest, then re-converts these two filtered data frames to sp. Then we’ll create histograms for the group sizes of these two sp objects.
 ```{r}
 #Plot group size/focal point
 MQ1_2010_df <- as.data.frame(MQ1_2010_sp)
 MQ1_2010_Sammy <- str_subset(MQ1_2010_df$Composition, "Sammy/")
 MQ1_2010_Sammy <- filter(MQ1_2010_df, Composition %in% MQ1_2010_Sammy)
-MQ1_2010_Sammy_daytime <- filter(MQ1_2010_Sammy, Time %in% c("11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00"))
+MQ1_2010_Sammy_daytime <- filter(MQ1_2010_Sammy, Time %in% c("11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45"))
 MQ1_2010_Sammy_nighttime <- filter(MQ1_2010_Sammy, Time %in% c("17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30"))
 nrow(MQ1_2010_Sammy)
 nrow(MQ1_2010_Sammy_daytime)
@@ -229,25 +297,44 @@ hist(MQ1_2010_Sammy_daytime$group_size, main = "Sammy's group size, daytime")
 MQ1_2010_sf_Sammy_nighttime <- st_as_sf(MQ1_2010_Sammy_nighttime, coords = c("Longitude", "Latitude"), crs = 32718)
 MQ1_2010_sp_Sammy_nighttime <- as(MQ1_2010_sf_Sammy_nighttime, "Spatial")
 hist(MQ1_2010_Sammy_nighttime$group_size, main = "Sammy's group size, nighttime")
+```
 
+
+Based on these histograms, it looks like Sammy’s group size at night tends to be smaller than his group size in the middle of the day. But what if we want a different type of visualization for this, one which shows where these points are located and the group size attribute at each point? We’ll assign a color scheme and breaks in group size, then use the spplot function, which plots spatial data (only in sp format) with attributes.
+```{r}
 colors_gs <- c("#c6dbef", "#6baed6", "#2171b5", "#08306b", "black")
 breaks_gs <- c(0, 5, 10, 15, 20, 25)
 
-spplot(MQ1_2010_sp_Sammy_daytime, "group_size", sp.layout = c(trails_sp, rio_sp, polygon), cuts = breaks_gs, col.regions = colors_gs, cex = 1, main = list(label = "Sammy's group size, daytime \n n = 520", cex = 1), key.space = "right", xlim = c(369392, 374170), ylim = c(9927991, 9932024))
+spplot(MQ1_2010_sp_Sammy_daytime, "group_size", sp.layout = c(trails_sp, rio_sp, polygon), cuts = breaks_gs, col.regions = colors_gs, cex = 1, main = list(label = "Sammy's group size, daytime \n n = 514", cex = 1), key.space = "right", xlim = c(369392, 374170), ylim = c(9927991, 9932024))
 
 spplot(MQ1_2010_sp_Sammy_nighttime, "group_size", sp.layout = c(trails_sp, rio_sp, polygon), cuts = breaks_gs, col.regions = colors_gs, cex = 1, main = list(label = "Sammy's group size, nighttime \n n = 192", cex = 1), key.space = "right", xlim = c(369392, 374170), ylim = c(9927991, 9932024))
+```
 
+
+## Converting to Raster Data and Mapping with tmap ##
+Finally, let’s expand these basic techniques just a little more by learning how to convert from vector data to raster data, then mapping using the {tmap} package. Raster data is data that is presented as a matrix of cells (or pixels) organized into rows and columns (or a grid) where each cell contains an attribute value representing information. Sometimes you may not have a choice of storing your data as a raster; for example, satellite imagery may only be available in raster format. But there are also times when it may be helpful to convert other features (such as points) from a vector data type into a raster. 
+
+For example, although we’ve seen the utility of point pattern analysis in determining the density of focal points and feeding trees and the spatial association between them, it cannot capture the variation in subgroup composition/size at those point locations. For relatively cohesive species with consistent group sizes (e.g. titi monkeys), intensity of range use can be demonstrated more or less directly by the number of focal point locations in a given region. But for fission-fusion species such as spider monkeys, which respond to changes in resource availability by dividing into subgroups that can vary in size and composition, it is critical to use an attribute that includes the number of individuals present at each point in addition to the density of the points themselves. As we saw above, the group size at any given focal point in our dataset ranged from 1-22 individuals. Clearly, an area in which groups of 22 individuals tend to gather exhibits heavier use than an area regularly visited by only one or two individuals. Therefore, we can aggregate the focal points and their associated attributes into a raster of 100 x 100m grid cells layered over the home range. In this case 100 x 100m grid cells are chosen because a hectare is a common unit of analysis and one that has been used for previous studies on this group, thus facilitating comparisons with earlier work.
+
+To do this, we first need to create the 100 x 100m grid and fit it to the MCP-calculated home range, then convert it to an sp object as follows:
+```{r}
 #create 100x100m grid and fit to home range
 grid <- raster(extent(polygon), resolution = c(100,100), crs = proj4string(polygon))
 grid <- extend(grid, c(1,1)) #adds one row and one column to each side of the raster
-# convert to SpatialPolygonsDataFrame
-gridPolygon <- rasterToPolygons(grid)
+gridPolygon <- rasterToPolygons(grid) #converts to a SpatialPolygonsDataFrame object
 intersectGridClipped <- intersect(gridPolygon, polygon)
-
-tmap_mode("view")
+```
+To visualize our grid, let’s use {tmap}. The {tmap} mapping package can take sp and sf objects and has a similar grammar to plotting with {ggplot} in that it seeks to handle each element of the map separately in a series of layers. First the tm_shape() is specified (here our grid, “intersectGridClipped”), followed by a tmap aesthetic function that specifies what is to be plotted. In this case we are simply plotting our clipped feeding tree points over the grid.
+```{r}
+tmap_mode("plot")
 tm_shape(intersectGridClipped) +
 tm_borders(lty = "solid", col = "black") + tm_shape(trees_2012_sp_clp) + tm_dots(size = 0.25, col = "green") + tm_layout(title = "Feeding Trees Across Home Range, grid cells",  title.position = c("right", "top")) + tm_scale_bar()
 
+```
+
+
+Then we’ll aggregate some attributes- average group size, focal point count, feeding tree count, and intensity of range use (defined here as the sum of group sizes at a given set of points) for each grid cell and convert this to a single sp object called "points_agg". Note the need for a function to be specified to determine how the point data are summarized over the raster grid.
+```{r}
 #aggregate attributes (average group size, focal point count, tree count, intensity (i.e., sum of group sizes) for each grid cell
 points_agg <- aggregate(x = MQ1_2010_sp["group_size"], by = intersectGridClipped, FUN = mean)
 points_agg_count <- aggregate(x = MQ1_2010_sp["Focal"], by = intersectGridClipped, FUN = length)
@@ -259,7 +346,9 @@ points_agg$trees <- points_agg_trees$ID
 points_agg$trees[is.na(points_agg$trees)] <- 0 #replace NAs for trees with 0s
 points_agg$intensity <- points_agg_intensity$group_size
 points_agg <- spTransform(points_agg, CRS("+proj=utm +zone=18 + south + datum=WGS84 +units=m"))
-
+```
+We can also add a new attribute to our raster. For example, to get some practice finding the centers of the grid cells and working with distances, here we’ll add an attribute for the distance from the mineral lick to each grid cell center.
+```{r}
 #add attribute for distance from mineral lick to each grid cell center
 grid_ctr <- coordinates(points_agg)
 x_proj <- grid_ctr[,1]
@@ -268,14 +357,19 @@ points_ctrs <- data.frame(x_proj, y_proj)
 ctrs_proj <- st_as_sf(points_ctrs, coords = c("x_proj", "y_proj"), crs = 32718)
 ctrs_sp <- as(ctrs_proj, "Spatial")
 dist_ml <- pointDistance(ctrs_sp, mineral_lick_sp, lonlat = FALSE)
-
 points_agg$dist_ml <- dist_ml
+```
+Then we want to log-transform our attributes for focal point count and intensity of range use in order to normalize these variables, because they are highly positively skewed. We'll also remove any cells where the group has not been recorded (i.e., where there is an "NA" for our attribute for average group size) using sp.na.omit() and take a look at a summary of attributes for our raster data.
+```{r}
 points_agg$log_count <- log1p(points_agg$count)
 points_agg$log_intensity <- log1p(points_agg$intensity)
 points_agg <- sp.na.omit(points_agg, col.name = "group_size", margin = 1)
 summary(points_agg)
-
-#plot log_intensity against home range
+```
+Now we are ready to generate a raster map, in which grid cells are shaded in proportion to their attributes. Here we will use {tmap} to show the log intensity of range use across our raster. We can incorporate a number of layers from the sp objects we have imported and transformed throughout this module. We can also use Leaflet- an open source JavaScript library used to build interactive web mapping applications ( https://rstudio.github.io/leaflet/), which is embedded within the tmap package, in order to add additional context and an interactive (zoomable) element. This is done by setting the tmap_mode to “view” as opposed to “plot” (as used above to create a standard static map).
+```{r}
+#plot log_intensity over home range
+tmap_mode("view")
 tm_shape(trails_sp) + tm_lines(col = "red", lty = "dotted") +
 tm_shape(polygon) + tm_fill(col = "wheat", alpha = .5) + tm_borders(col = "wheat", lwd = 2) +
 tm_shape(points_agg) +
